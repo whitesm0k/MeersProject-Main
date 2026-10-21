@@ -8,7 +8,13 @@ TOKEN = os.getenv("BOT_TOKEN")
 # ID канала берётся из переменной окружения TARGET_CHANNEL_ID
 TARGET_CHANNEL_ID = int(os.getenv("TARGET_CHANNEL_ID"))
 
+# Список ID ролей, которые могут оставлять отзывы (формат: "123456789012345678,987654321098765432")
+# Разделены запятой без пробелов
+review_role_ids_str = os.getenv("REVIEW_ROLE_IDS", "")
+REVIEW_ROLE_IDS = [int(rid) for rid in review_role_ids_str.split(",") if rid.strip().isdigit()]
+
 intents = discord.Intents.default()
+intents.message_content = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
@@ -61,6 +67,24 @@ class ReviewView(View):
 
     @discord.ui.button(label="Оставить отзыв", style=discord.ButtonStyle.blurple, custom_id="review_button")
     async def review_callback(self, interaction: discord.Interaction, button: Button):
+        # Проверка наличия ролей у пользователя
+        if not REVIEW_ROLE_IDS:
+            await interaction.response.send_message(
+                "❌ Ошибка конфигурации: не заданы ID ролей для отзывов (REVIEW_ROLE_IDS).",
+                ephemeral=True
+            )
+            return
+
+        user_roles = [role.id for role in interaction.user.roles]
+        has_permission = any(role_id in user_roles for role_id in REVIEW_ROLE_IDS)
+
+        if not has_permission:
+            await interaction.response.send_message(
+                "❌ У вас нет прав на оставление отзыва. Доступ разрешен только для пользователей с определенными ролями.",
+                ephemeral=True
+            )
+            return
+
         await interaction.response.send_modal(ReviewModal(self.bot_client))
 
 
@@ -81,6 +105,8 @@ async def on_ready():
     try:
         synced = await tree.sync()
         print(f"✅ Синхронизировано команд: {len(synced)}")
+        # Логирование разрешенных ролей при старте
+        print(f"📋 Разрешенные роли для отзывов: {REVIEW_ROLE_IDS}")
     except Exception as e:
         print(f"❌ Ошибка синхронизации: {e}")
 
